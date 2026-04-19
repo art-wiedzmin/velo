@@ -1,0 +1,110 @@
+/* velo — global design tokens, fonts, reset, scrollbars.
+ * Component-specific rules live inside their .svelte files (scoped) —
+ * anything that is cross-cutting (typography, chrome, layout primitives,
+ * modal/drawer scrims, toast, ctxmenu) lives here. */
+
+@import "@fontsource/geist/400.css";
+@import "@fontsource/geist/500.css";
+@import "@fontsource/geist/600.css";
+@import "@fontsource/geist/700.css";
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0a0a0a;
+  --surface: #121212;
+  --surface-2: #181818;
+  --surface-3: #212121;
+  --border: #2a2a2a;
+  --border-strong: #404040;
+  --text: #f2f2f2;
+  --text-2: #a0a0a0;
+  --text-3: #606060;
+  --text-4: #454545;
+
+  --accent: oklch(0.76 0.13 295);
+  --accent-ink: #140a20;
+  --accent-soft: color-mix(in oklab, var(--accent) 18%, transparent);
+
+  --good: oklch(0.72 0.16 150);
+  --warn: oklch(0.78 0.15 75);
+  --bad: oklch(0.66 0.20 27);
+
+  --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Scrollbar — used anywhere overflow-y:auto appears. Kept here so every
+ * scroll container gets the same thin violet-tint thumb without repeating. */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--text-3) 40%, transparent);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--text-3) 70%, transparent);
+  background-clip: padding-box;
+}
+
+/* Utility keyframes shared across components. */
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--warn) 10%, transparent);
+  }
+}
+@keyframes breathe {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--warn) 15%, transparent);
+  }
+}
+@keyframes switchIn {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 60%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--accent) 20%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@keyframes fade {
+  from { opacity: 0 }
+  to { opacity: 1 }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}

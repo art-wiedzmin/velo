@@ -1,0 +1,47 @@
+[package]
+name = "velo"
+version = "1.0.0"
+description = "VLESS desktop client for Windows. Tauri 2 + Svelte 5 shell around a sing-box sidecar."
+authors = ["art-wiedzmin"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/art-wiedzmin/velo"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "velo_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["test", "tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+url = "2"
+percent-encoding = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "charset", "socks"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
+tokio-tungstenite = "0.24"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
+tauri-plugin-dialog = "2.7.0"
+
+[target.'cfg(windows)'.dependencies]
+win32job = "2"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_Networking_WinInet", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+pretty_assertions = "1"
+base64 = "0.22"
+
