@@ -6,9 +6,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/art-wiedzmin/velo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/art-wiedzmin/velo?sort=semver&color=0ea5e9"></a>
-  <a href="./LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/github/license/art-wiedzmin/velo?color=6366f1"></a>
-  <a href="https://github.com/art-wiedzmin/velo/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/art-wiedzmin/velo/total?color=22c55e"></a>
+  <a href="https://github.com/art-wiedzmin/velo/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/art-wiedzmin/velo?sort=semver&color=0ea5e9&cacheSeconds=3600"></a>
+  <a href="./LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/github/license/art-wiedzmin/velo?color=6366f1&cacheSeconds=86400"></a>
+  <a href="https://github.com/art-wiedzmin/velo/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/art-wiedzmin/velo/total?color=22c55e&cacheSeconds=3600"></a>
 </p>
 
 <!-- screenshot placeholder — drop in once the UI is stable -->
