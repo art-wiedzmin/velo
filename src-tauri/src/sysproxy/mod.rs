@@ -157,6 +157,74 @@ fn restore(snap: &Snapshot) -> Result<(), Error> {
     Ok(())
 }
 
+/// Clears `ProxyEnable` when the registry points at a local port nobody is
+/// listening on. Covers the specific failure where a prior velo session
+/// (or crashed sibling process) left `ProxyEnable=1, ProxyServer=127.0.0.1:N`
+/// behind — WinINet apps then hang on connection refused until something
+/// binds that port again. Port-agnostic: any localhost-like host, any port.
+/// No-op when the port is actually alive (another proxy app owns it) or
+/// when the proxy points at a non-local host (corporate proxy, etc.).
+///
+/// Returns `true` when the registry was modified.
+#[cfg(windows)]
+pub fn clear_orphan_if_dead() -> Result<bool, Error> {
+    let cleared = registry::with_key(SETTINGS_PATH, |h| {
+        let Some(enable) = registry::read_dword(h, "ProxyEnable")? else {
+            return Ok(false);
+        };
+        if enable != 1 {
+            return Ok(false);
+        }
+        let Some(server) = registry::read_sz(h, "ProxyServer")? else {
+            return Ok(false);
+        };
+        let Some(port) = parse_local_port(&server) else {
+            return Ok(false);
+        };
+        if is_port_listening(port) {
+            return Ok(false);
+        }
+        registry::write_dword(h, "ProxyEnable", 0)?;
+        Ok(true)
+    })?;
+    if cleared {
+        notify_wininet();
+    }
+    Ok(cleared)
+}
+
+#[cfg(not(windows))]
+pub fn clear_orphan_if_dead() -> Result<bool, Error> {
+    Err(Error::Unsupported)
+}
+
+/// Extracts the port from a `ProxyServer` string when it points at a local
+/// host. Accepts both the simple `host:port` form velo writes and the
+/// protocol-keyed form `http=host:port;https=host:port;...` that some other
+/// clients write. Returns `None` for remote hosts or unparseable input.
+fn parse_local_port(server: &str) -> Option<u16> {
+    for part in server.split(';') {
+        let part = part.trim();
+        let addr = part.split_once('=').map(|(_, v)| v).unwrap_or(part);
+        let Some((host, port)) = addr.rsplit_once(':') else { continue };
+        let host = host.trim_start_matches('[').trim_end_matches(']');
+        if matches!(host, "127.0.0.1" | "localhost" | "::1") {
+            if let Ok(p) = port.parse::<u16>() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn is_port_listening(port: u16) -> bool {
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::Duration;
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok()
+}
+
 #[cfg(windows)]
 fn snapshot(h: windows_sys::Win32::System::Registry::HKEY) -> Result<Snapshot, Error> {
     Ok(Snapshot {
@@ -354,5 +422,39 @@ mod tests {
         assert!(DEFAULT_BYPASS.contains("<local>"));
         // sanity: semicolon-separated, no stray whitespace
         assert!(!DEFAULT_BYPASS.contains(' '));
+    }
+}
+
+
+#[cfg(test)]
+mod parse_port_tests {
+    use super::parse_local_port;
+
+    #[test]
+    fn simple_loopback_forms() {
+        assert_eq!(parse_local_port("127.0.0.1:10808"), Some(10808));
+        assert_eq!(parse_local_port("localhost:1080"), Some(1080));
+        assert_eq!(parse_local_port("[::1]:7890"), Some(7890));
+    }
+
+    #[test]
+    fn protocol_keyed_form() {
+        // Some clients write `http=host:port;https=host:port;ftp=...`.
+        // Pick the first localhost entry we find.
+        let s = "http=127.0.0.1:10808;https=127.0.0.1:10808";
+        assert_eq!(parse_local_port(s), Some(10808));
+    }
+
+    #[test]
+    fn rejects_remote_host() {
+        assert_eq!(parse_local_port("corp.proxy:8080"), None);
+        assert_eq!(parse_local_port("10.0.0.1:3128"), None);
+    }
+
+    #[test]
+    fn rejects_garbage() {
+        assert_eq!(parse_local_port(""), None);
+        assert_eq!(parse_local_port("not-an-address"), None);
+        assert_eq!(parse_local_port("127.0.0.1:notaport"), None);
     }
 }

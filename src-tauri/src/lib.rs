@@ -51,8 +51,6 @@ pub fn run() {
             commands::core_cmds::core_start,
             commands::core_cmds::core_stop,
             commands::core_cmds::core_status,
-            commands::sysproxy::sysproxy_enable,
-            commands::sysproxy::sysproxy_disable,
             commands::sysproxy::sysproxy_status,
             commands::profiles::profiles_list,
             commands::profiles::profiles_add,
@@ -146,4 +144,7 @@ fn restore_sysproxy_on_exit(app: &AppHandle) {
     if let Ok(dir) = startup::resolve_data_dir(app) {
         sysproxy::Snapshot::forget(&dir);
     }
+    // Final safety net — covers the case where the snapshot restored us to
+    // a prior `ProxyEnable=1` state that itself referenced our now-dead port.
+    let _ = sysproxy::clear_orphan_if_dead();
 }

@@ -5,10 +5,6 @@ import { sysproxy } from "./sysproxy.svelte";
 
 export class CoreStore {
   state = $state<CoreStateUi>({ kind: "disconnected" });
-  /** Last port used for sysproxy (from the built sing-box config). Needed
-   * because sysproxy is toggled independently of the runner. Defaults to
-   * the mixed-inbound port baked into the config builder. */
-  mixedPort = $state(10808);
 
   /** Convenience boolean the status-bar light reacts to. */
   get running(): boolean {
@@ -51,15 +47,12 @@ export class CoreStore {
     }
     this.state = { kind: "connecting", target: sp };
     try {
+      // Backend toggles sysproxy alongside the runner based on mode — in
+      // TUN mode sysproxy stays off (kernel-level capture handles routing);
+      // in Sysproxy mode it's enabled atomically with the runner. Frontend
+      // just syncs the indicator afterwards.
       await api.coreStart(sp.profile, sp.id);
-      // Auto-enable sysproxy so the browser actually routes through the
-      // new proxy. Failure here is surfaced separately — core is up, UI
-      // should reflect that and let the user retry the proxy toggle.
-      try {
-        await sysproxy.enable(this.mixedPort);
-      } catch (proxyErr) {
-        console.warn("sysproxy enable failed:", proxyErr);
-      }
+      await sysproxy.refresh();
       this.state = { kind: "connected", active: sp, since: Date.now() };
       void catalog.refresh();
     } catch (e) {
@@ -74,15 +67,11 @@ export class CoreStore {
     if (from.id === sp.id) return;
     this.state = { kind: "switching", from, to: sp };
     try {
-      // core_stop also clears sysproxy backend-side. After restart we must
-      // re-enable it — a switch should not silently leave traffic direct.
+      // core_stop restores sysproxy; core_start re-applies it if the target
+      // profile's mode warrants it. No frontend toggling needed.
       await api.coreStop();
       await api.coreStart(sp.profile, sp.id);
-      try {
-        await sysproxy.enable(this.mixedPort);
-      } catch (proxyErr) {
-        console.warn("sysproxy re-enable after switch failed:", proxyErr);
-      }
+      await sysproxy.refresh();
       this.state = { kind: "connected", active: sp, since: Date.now() };
       void catalog.refresh();
     } catch (e) {
@@ -100,9 +89,7 @@ export class CoreStore {
     }
     try {
       await api.coreStop();
-      // Backend clears the registry; sync our local store so the toggle
-      // displays correctly without a separate refresh call.
-      sysproxy.enabled = false;
+      await sysproxy.refresh();
       this.state = { kind: "disconnected" };
     } catch (e) {
       this.state = { kind: "error", reason: String(e), lastTarget: active };

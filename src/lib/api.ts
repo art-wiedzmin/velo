@@ -31,11 +31,8 @@ export const coreStop = (): Promise<void> => invoke("core_stop");
 export const coreStatus = (): Promise<boolean> => invoke("core_status");
 
 // --- System proxy --------------------------------------------------------
-
-export const sysproxyEnable = (host: string, port: number): Promise<void> =>
-  invoke("sysproxy_enable", { host, port });
-
-export const sysproxyDisable = (): Promise<void> => invoke("sysproxy_disable");
+// Enable/disable is owned server-side by `core_start`/`core_stop`, gated
+// by the active mode. Frontend only reads status to render the indicator.
 
 export const sysproxyStatus = (): Promise<boolean> => invoke("sysproxy_status");
 

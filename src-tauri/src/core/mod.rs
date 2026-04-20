@@ -4,6 +4,8 @@ pub mod stats;
 mod sink;
 #[cfg(windows)]
 mod job;
+#[cfg(windows)]
+pub mod port;
 
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
