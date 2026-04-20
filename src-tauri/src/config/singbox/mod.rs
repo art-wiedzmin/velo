@@ -23,7 +23,7 @@ use crate::profile::*;
 pub fn build(profile: &Profile, opts: &Options) -> Value {
     let mut cfg = json!({
         "log": { "level": opts.log_level, "timestamp": true },
-        "dns": dns::build_dns(),
+        "dns": dns::build_dns(profile),
         "inbounds": inbounds::build_inbounds(opts),
         "outbounds": outbounds::build_outbounds(profile),
         "route": route::build_route(opts),
