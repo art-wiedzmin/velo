@@ -1,6 +1,6 @@
 [package]
 name = "velo"
-version = "1.0.1"
+version = "1.0.2"
 description = "VLESS desktop client for Windows. Tauri 2 + Svelte 5 shell around a sing-box sidecar."
 authors = ["art-wiedzmin"]
 license = "GPL-3.0-or-later"
