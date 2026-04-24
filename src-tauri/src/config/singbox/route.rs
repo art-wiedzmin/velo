@@ -2,6 +2,15 @@ use serde_json::{json, Value};
 
 use super::types::{Mode, Options, RoutingMode, TAG_DIRECT, TAG_PROXY};
 
+fn exe_basename(path: &str) -> String {
+    // Accept both separators; picker on Windows yields backslashes, but
+    // paths round-tripped through serde or user input may use forward slashes.
+    path.rsplit(|c| c == '\\' || c == '/')
+        .next()
+        .unwrap_or(path)
+        .to_string()
+}
+
 pub(super) fn build_route(opts: &Options) -> Value {
     // Baseline: hijack DNS, keep private IPs local.
     let mut rules: Vec<Value> = vec![
@@ -18,20 +27,25 @@ pub(super) fn build_route(opts: &Options) -> Value {
     // opted into the HTTP proxy reach us at all.
     let mut final_tag = TAG_PROXY;
     if opts.mode == Mode::Tun && !opts.routing_apps.is_empty() {
-        let apps: Vec<Value> = opts
+        // Match on exe filename, not absolute path. Self-updating apps
+        // (Discord, VS Code, Spotify, Electron-based installers) carry the
+        // version in their install folder — `…\Discord\app-1.0.9234\Discord.exe`
+        // — so any `process_path` whitelist silently breaks on the next update.
+        // `process_name` matches on basename and survives updates. Tradeoff:
+        // two exes with the same filename are indistinguishable, which in
+        // practice is rare on Windows (installer folders keep names unique).
+        let names: Vec<Value> = opts
             .routing_apps
             .iter()
-            .map(|p| Value::from(p.clone()))
+            .map(|p| exe_basename(p).into())
             .collect();
         match opts.routing_mode {
             RoutingMode::Whitelist => {
-                // Only listed apps traverse the proxy; everything else bypasses.
-                rules.push(json!({ "process_path": apps, "outbound": TAG_PROXY }));
+                rules.push(json!({ "process_name": names, "outbound": TAG_PROXY }));
                 final_tag = TAG_DIRECT;
             }
             RoutingMode::Blacklist => {
-                // Listed apps bypass, everyone else still flows through.
-                rules.push(json!({ "process_path": apps, "outbound": TAG_DIRECT }));
+                rules.push(json!({ "process_name": names, "outbound": TAG_DIRECT }));
                 final_tag = TAG_PROXY;
             }
             RoutingMode::None => {}
@@ -66,9 +80,10 @@ mod tests {
         let rules = cfg["route"]["rules"].as_array().unwrap();
         let app_rule = rules
             .iter()
-            .find(|r| r.get("process_path").is_some())
+            .find(|r| r.get("process_name").is_some())
             .unwrap();
         assert_eq!(app_rule["outbound"], "proxy");
+        assert_eq!(app_rule["process_name"][0], "browser.exe");
         assert_eq!(cfg["route"]["final"], "direct");
     }
 
@@ -87,10 +102,38 @@ mod tests {
         let rules = cfg["route"]["rules"].as_array().unwrap();
         let app_rule = rules
             .iter()
-            .find(|r| r.get("process_path").is_some())
+            .find(|r| r.get("process_name").is_some())
             .unwrap();
         assert_eq!(app_rule["outbound"], "direct");
+        assert_eq!(app_rule["process_name"][0], "torrent.exe");
         assert_eq!(cfg["route"]["final"], "proxy");
+    }
+
+    #[test]
+    fn self_updating_app_path_collapses_to_basename() {
+        // Regression: Discord and other Electron apps ship under
+        // `…\<app>\app-<version>\<Name>.exe`; the version folder changes on
+        // every auto-update and breaks `process_path` matchers. We store the
+        // absolute path the user picked, but emit only the basename so the
+        // rule survives updates.
+        let p = parser::parse_any("trojan://pw@ex.com:443?type=tcp").unwrap();
+        let cfg = build(
+            &p,
+            &Options {
+                mode: Mode::Tun,
+                routing_mode: RoutingMode::Whitelist,
+                routing_apps: vec![
+                    r"C:\Users\u\AppData\Local\Discord\app-1.0.9233\Discord.exe".into(),
+                ],
+                ..Options::default()
+            },
+        );
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let app_rule = rules
+            .iter()
+            .find(|r| r.get("process_name").is_some())
+            .unwrap();
+        assert_eq!(app_rule["process_name"][0], "Discord.exe");
     }
 
     #[test]
@@ -106,6 +149,6 @@ mod tests {
             },
         );
         let rules = cfg["route"]["rules"].as_array().unwrap();
-        assert!(rules.iter().all(|r| r.get("process_path").is_none()));
+        assert!(rules.iter().all(|r| r.get("process_name").is_none()));
     }
 }
