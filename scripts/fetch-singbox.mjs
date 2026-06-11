@@ -14,10 +14,10 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-const VERSION = "1.11.15";
+const VERSION = "1.13.13";
 // SHA-256 of the extracted `sing-box.exe` (not the zip). Decouples the pin
 // from upstream re-zipping and matches what we actually ship.
-const SHA256 = "6fe4af11bf4fd485e0e454d7c060cb5ece29a2839a78ffb53759ce4dd6645161";
+const SHA256 = "af59a77a8171dd74b0b560ce34439a85b44cb82d87acfd8b6d2c4c933ad0397d";
 const URL = `https://github.com/SagerNet/sing-box/releases/download/v${VERSION}/sing-box-${VERSION}-windows-amd64.zip`;
 
 const root = resolve(".");

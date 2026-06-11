@@ -12,8 +12,12 @@ fn exe_basename(path: &str) -> String {
 }
 
 pub(super) fn build_route(opts: &Options) -> Value {
-    // Baseline: hijack DNS, keep private IPs local.
+    // Baseline: sniff, hijack DNS, keep private IPs local.
     let mut rules: Vec<Value> = vec![
+        // Sniffing moved from inbound fields to a route action in 1.13.
+        // Must precede hijack-dns: `protocol: "dns"` matches the sniffed
+        // protocol.
+        json!({ "action": "sniff" }),
         // hijack-dns is the sing-box 1.11 replacement for the deprecated
         // `dns` outbound. It MUST be filtered — an unfiltered hijack-dns rule
         // matches every packet and funnels all traffic through the DNS hijack,
@@ -55,6 +59,10 @@ pub(super) fn build_route(opts: &Options) -> Value {
     json!({
         "rules": rules,
         "final": final_tag,
+        // 1.12+ replacement for the legacy `outbound: "any"` DNS rule:
+        // outbound dials to domain addresses (the proxy server itself)
+        // resolve via the direct DNS server, never through the proxy.
+        "default_domain_resolver": "direct",
         "auto_detect_interface": true
     })
 }

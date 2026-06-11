@@ -2,6 +2,9 @@ use serde_json::{json, Value};
 
 use super::types::{Mode, Options};
 
+// Inbound-level `sniff`/`sniff_override_destination` were removed in
+// sing-box 1.13 — sniffing is now the `{"action": "sniff"}` route rule
+// emitted by `route.rs`.
 pub(super) fn build_inbounds(opts: &Options) -> Value {
     let mut arr = Vec::new();
     if opts.mixed_port != 0 {
@@ -9,9 +12,7 @@ pub(super) fn build_inbounds(opts: &Options) -> Value {
             "type": "mixed",
             "tag": "mixed-in",
             "listen": opts.listen,
-            "listen_port": opts.mixed_port,
-            "sniff": true,
-            "sniff_override_destination": false
+            "listen_port": opts.mixed_port
         }));
     }
     if opts.mode == Mode::Tun {
@@ -23,8 +24,7 @@ pub(super) fn build_inbounds(opts: &Options) -> Value {
             "auto_route": true,
             "strict_route": true,
             "stack": "mixed",
-            "endpoint_independent_nat": true,
-            "sniff": true
+            "endpoint_independent_nat": true
         }));
     }
     Value::Array(arr)

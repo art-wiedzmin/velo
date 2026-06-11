@@ -22,12 +22,16 @@ fn singbox_path() -> Option<String> {
 }
 
 fn validate(label: &str, url: &str) {
+    validate_with(label, url, &Options::default());
+}
+
+fn validate_with(label: &str, url: &str, opts: &Options) {
     let Some(sb) = singbox_path() else {
         eprintln!("[{label}] skipped: no sing-box binary (set VELO_SINGBOX or place at ../tools/)");
         return;
     };
     let profile = parser::parse_any(url).expect("parse");
-    let cfg = singbox::build(&profile, &Options::default());
+    let cfg = singbox::build(&profile, opts);
     let json = serde_json::to_string_pretty(&cfg).unwrap();
 
     let mut tmp = tempfile_like(label);
@@ -105,4 +109,23 @@ fn vmess_ws_tls() {
 #[test]
 fn trojan_tcp_tls() {
     validate("trojan", "trojan://pw@ex.com:443?type=tcp#n");
+}
+
+// TUN-mode config with process routing exercises the tun inbound and the
+// route-rule shapes (sniff action, process_name, default_domain_resolver) —
+// none of which appear in the sysproxy-mode cases above. `check` only
+// parses; it does not create the interface, so no admin needed.
+#[test]
+fn tun_whitelist_routing() {
+    use velo_lib::config::singbox::{Mode, RoutingMode};
+    validate_with(
+        "tun_whitelist",
+        "trojan://pw@ex.com:443?type=tcp#n",
+        &Options {
+            mode: Mode::Tun,
+            routing_mode: RoutingMode::Whitelist,
+            routing_apps: vec![r"C:\Apps\browser.exe".into()],
+            ..Options::default()
+        },
+    );
 }

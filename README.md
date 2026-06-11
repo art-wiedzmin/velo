@@ -45,7 +45,7 @@ All three launch elevated (`requireAdministrator`). See [Platform notes](#platfo
 | Frontend      | Svelte 5 (runes) + TypeScript + Vite                       |
 | Shell         | Tauri 2 (Rust backend, WebView2 renderer)                  |
 | Storage       | SQLite (`rusqlite`) with schema migrations                 |
-| Proxy engine  | [sing-box](https://github.com/SagerNet/sing-box) v1.11.15 sidecar |
+| Proxy engine  | [sing-box](https://github.com/SagerNet/sing-box) v1.13.13 sidecar |
 | Packaging     | MSI / NSIS via Tauri bundler; portable ZIP via custom script |
 
 ## Build
@@ -113,7 +113,7 @@ Both locations hold `velo.db`, `sing-box.log`, `last-config.json`, and
 ## Contributing
 
 ```sh
-cd src-tauri && cargo test --lib    # 82 tests, offline
+cd src-tauri && cargo test --lib    # 83 tests, offline
 npm run check                       # svelte-check, 0 errors expected
 ```
 
@@ -144,7 +144,7 @@ corresponding source.
 
 The bundled sing-box sidecar is also GPLv3
 ([upstream](https://github.com/SagerNet/sing-box),
-pinned release: [v1.11.15](https://github.com/SagerNet/sing-box/releases/tag/v1.11.15)).
+pinned release: [v1.13.13](https://github.com/SagerNet/sing-box/releases/tag/v1.13.13)).
 `scripts/fetch-singbox.mjs` downloads the official release artifact and
 places its upstream `LICENSE` text next to the binary; the portable zip
 ships both as `sing-box.exe` and `LICENSE-sing-box.txt`.
