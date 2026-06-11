@@ -48,11 +48,6 @@ fn build_proxy_outbound(p: &Profile) -> Value {
             );
             o.insert("password".into(), p.credential.clone().into());
         }
-        Protocol::Hysteria2 | Protocol::Tuic => {
-            // Parsers for these aren't wired yet; keep the arm explicit so a
-            // future addition can't silently fall through to VLESS shape.
-            o.insert("type".into(), "placeholder-unsupported".into());
-        }
     }
 
     if let Some(tls) = build_tls(p) {

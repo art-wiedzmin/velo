@@ -10,9 +10,7 @@ export type Protocol =
   | "vless"
   | "vmess"
   | "trojan"
-  | "shadowsocks"
-  | "hysteria2"
-  | "tuic";
+  | "shadowsocks";
 
 export type Transport =
   | "tcp"
@@ -74,7 +72,6 @@ export interface StoredProfile {
   subscription_id: number | null;
   favorite: boolean;
   last_connected_at: number | null;
-  region: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -94,18 +91,6 @@ export interface StoredSubscription {
 export interface SyncApplied {
   subscription_id: number;
   profiles_inserted: number;
-}
-
-export interface LineError {
-  line: number;
-  input: string;
-  error: string;
-}
-
-export interface SubscriptionResult {
-  profiles: Profile[];
-  errors: LineError[];
-  decoded_base64: boolean;
 }
 
 export type LogStream = "stdout" | "stderr";

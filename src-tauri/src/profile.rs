@@ -13,8 +13,6 @@ pub enum Protocol {
     Vmess,
     Trojan,
     Shadowsocks,
-    Hysteria2,
-    Tuic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

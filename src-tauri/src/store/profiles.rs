@@ -7,11 +7,11 @@ use super::types::{Result, StoreError, StoredProfile};
 use super::Store;
 
 const PROFILE_COLS_SELECT: &str = concat!(
-    "SELECT id, data, subscription_id, favorite, last_connected_at, region, created_at, updated_at ",
+    "SELECT id, data, subscription_id, favorite, last_connected_at, created_at, updated_at ",
     "FROM profiles WHERE id = ?1"
 );
 const PROFILE_LIST_SQL: &str = concat!(
-    "SELECT id, data, subscription_id, favorite, last_connected_at, region, created_at, updated_at ",
+    "SELECT id, data, subscription_id, favorite, last_connected_at, created_at, updated_at ",
     "FROM profiles ORDER BY created_at ASC, id ASC"
 );
 
@@ -44,7 +44,6 @@ impl Store {
             subscription_id,
             favorite: false,
             last_connected_at: None,
-            region: None,
             created_at: now,
             updated_at: now,
         })
@@ -91,7 +90,7 @@ impl Store {
         )
         .optional()
         .map_err(StoreError::from)
-        .and_then(|opt| opt.transpose().map_err(Into::into))
+        .and_then(|opt| opt.transpose())
     }
 
     pub fn list_profiles(&self) -> Result<Vec<StoredProfile>> {
@@ -173,8 +172,6 @@ fn protocol_str(p: &Profile) -> &'static str {
         Vmess => "vmess",
         Trojan => "trojan",
         Shadowsocks => "shadowsocks",
-        Hysteria2 => "hysteria2",
-        Tuic => "tuic",
     }
 }
 
@@ -184,9 +181,8 @@ fn row_to_stored_profile(row: &rusqlite::Row<'_>) -> rusqlite::Result<Result<Sto
     let subscription_id: Option<i64> = row.get(2)?;
     let favorite: i64 = row.get(3)?;
     let last_connected_at: Option<i64> = row.get(4)?;
-    let region: Option<String> = row.get(5)?;
-    let created_at: i64 = row.get(6)?;
-    let updated_at: i64 = row.get(7)?;
+    let created_at: i64 = row.get(5)?;
+    let updated_at: i64 = row.get(6)?;
     Ok((|| {
         let profile: Profile = serde_json::from_str(&data)?;
         Ok(StoredProfile {
@@ -195,7 +191,6 @@ fn row_to_stored_profile(row: &rusqlite::Row<'_>) -> rusqlite::Result<Result<Sto
             subscription_id,
             favorite: favorite != 0,
             last_connected_at,
-            region,
             created_at,
             updated_at,
         })

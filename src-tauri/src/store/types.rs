@@ -16,6 +16,10 @@ pub enum StoreError {
     /// leak.
     #[error("subscription with this URL already exists")]
     DuplicateSubscriptionUrl,
+    /// The database was created by a newer velo. Refusing to open beats
+    /// silently operating on a schema this binary doesn't understand.
+    #[error("database schema v{found} is newer than supported v{supported} — update velo")]
+    SchemaTooNew { found: u32, supported: u32 },
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
@@ -27,7 +31,6 @@ pub struct StoredProfile {
     pub subscription_id: Option<i64>,
     pub favorite: bool,
     pub last_connected_at: Option<i64>,
-    pub region: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
