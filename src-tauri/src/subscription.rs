@@ -18,12 +18,19 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 
+/// Upper bound on a subscription body. Real subscriptions are well under
+/// 1 MB; the cap exists so a malicious or broken server can't balloon the
+/// (elevated) velo process with an unbounded download.
+const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
+
 #[derive(Debug, Error)]
 pub enum FetchError {
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
     #[error("empty response body")]
     Empty,
+    #[error("response body exceeds {MAX_BODY_BYTES} bytes")]
+    TooLarge,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -65,10 +72,29 @@ pub async fn fetch(url: &str) -> Result<FetchedSubscription, FetchError> {
         .user_agent("velo/0.1 (subscription)")
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(30))
+        // Subscription URLs embed the user's secret token; following an
+        // https→http redirect would replay that token in cleartext.
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let downgrade = attempt.url().scheme() == "http"
+                && attempt
+                    .previous()
+                    .last()
+                    .is_some_and(|u| u.scheme() == "https");
+            if downgrade {
+                attempt.error("refusing https→http redirect downgrade")
+            } else if attempt.previous().len() > 10 {
+                attempt.error("too many redirects")
+            } else {
+                attempt.follow()
+            }
+        }))
         .build()?;
-    let resp = client.get(url).send().await?.error_for_status()?;
+    let mut resp = client.get(url).send().await?.error_for_status()?;
+    if resp.content_length().is_some_and(|l| l > MAX_BODY_BYTES as u64) {
+        return Err(FetchError::TooLarge);
+    }
 
-    // Extract the header before consuming the body — reqwest's `text()`
+    // Extract the header before consuming the body — reading chunks
     // takes ownership and would drop headers with the response.
     let quota = resp
         .headers()
@@ -77,7 +103,16 @@ pub async fn fetch(url: &str) -> Result<FetchedSubscription, FetchError> {
         .map(parse_userinfo)
         .unwrap_or_default();
 
-    let body = resp.text().await?;
+    // Chunked read with a running cap: Content-Length is advisory (absent
+    // on chunked transfer), so the limit must be enforced on actual bytes.
+    let mut raw: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if raw.len() + chunk.len() > MAX_BODY_BYTES {
+            return Err(FetchError::TooLarge);
+        }
+        raw.extend_from_slice(&chunk);
+    }
+    let body = String::from_utf8_lossy(&raw);
     if body.trim().is_empty() {
         return Err(FetchError::Empty);
     }
@@ -132,7 +167,7 @@ pub fn parse_userinfo(raw: &str) -> SubscriptionQuota {
     let mut total: Option<i64> = None;
     let mut expire: Option<i64> = None;
 
-    for piece in raw.split(|c: char| c == ';' || c == ',') {
+    for piece in raw.split([';', ',']) {
         let piece = piece.trim();
         let Some((k, v)) = piece.split_once('=') else { continue };
         let v = v.trim().parse::<i64>().ok();

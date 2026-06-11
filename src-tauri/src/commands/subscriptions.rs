@@ -19,15 +19,6 @@ pub async fn subscriptions_add(
 }
 
 #[tauri::command]
-pub async fn subscriptions_rename(
-    store: State<'_, AppStore>,
-    id: i64,
-    name: String,
-) -> Result<(), String> {
-    with_store(store.0.clone(), move |s| s.rename_subscription(id, &name)).await
-}
-
-#[tauri::command]
 pub async fn subscriptions_delete(store: State<'_, AppStore>, id: i64) -> Result<(), String> {
     with_store(store.0.clone(), move |s| s.delete_subscription(id)).await
 }
@@ -48,13 +39,29 @@ pub async fn subscriptions_sync(
 
     let fetched = subscription::fetch(&sub.url).await;
     match fetched {
-        Ok(fetched) => {
+        Ok(fetched) if !fetched.result.profiles.is_empty() => {
             let profiles = fetched.result.profiles;
             let quota = fetched.quota;
             with_store(store, move |s| {
                 s.apply_sync_result(id, &profiles, None, Some(&quota))
             })
             .await
+        }
+        // HTTP 200 with zero parseable profiles is almost always a provider
+        // error page or a quota wall, not "your subscription is now empty" —
+        // wiping the cached profiles here would strand a working setup.
+        // Record it as a failed sync and keep the cache.
+        Ok(fetched) => {
+            let msg = match fetched.result.errors.len() {
+                0 => "subscription returned no profiles".to_owned(),
+                n => format!("no parseable profiles ({n} invalid lines)"),
+            };
+            let recorded = msg.clone();
+            with_store(store, move |s| {
+                s.apply_sync_result(id, &[], Some(&recorded), None)
+            })
+            .await?;
+            Err(msg)
         }
         Err(e) => {
             let msg = e.to_string();

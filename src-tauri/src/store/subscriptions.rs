@@ -6,9 +6,7 @@ use super::Store;
 use crate::subscription::SubscriptionQuota;
 use crate::profile::Profile;
 
-const SUBSCRIPTION_SELECT_COLS: &str = concat!(
-    "id, name, url, last_fetched_at, last_error, used_bytes, total_bytes, expires_at, created_at"
-);
+const SUBSCRIPTION_SELECT_COLS: &str = "id, name, url, last_fetched_at, last_error, used_bytes, total_bytes, expires_at, created_at";
 
 impl Store {
     pub fn insert_subscription(&self, name: &str, url: &str) -> Result<StoredSubscription> {
@@ -39,18 +37,6 @@ impl Store {
             expires_at: None,
             created_at: now,
         })
-    }
-
-    pub fn rename_subscription(&self, id: i64, name: &str) -> Result<()> {
-        let conn = self.conn.lock().expect("store mutex poisoned");
-        let n = conn.execute(
-            "UPDATE subscriptions SET name = ?1 WHERE id = ?2",
-            params![name, id],
-        )?;
-        if n == 0 {
-            return Err(StoreError::NotFound);
-        }
-        Ok(())
     }
 
     pub fn delete_subscription(&self, id: i64) -> Result<()> {
