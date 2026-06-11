@@ -5,7 +5,7 @@ use super::types::{Mode, Options, RoutingMode, TAG_DIRECT, TAG_PROXY};
 fn exe_basename(path: &str) -> String {
     // Accept both separators; picker on Windows yields backslashes, but
     // paths round-tripped through serde or user input may use forward slashes.
-    path.rsplit(|c| c == '\\' || c == '/')
+    path.rsplit(['\\', '/'])
         .next()
         .unwrap_or(path)
         .to_string()

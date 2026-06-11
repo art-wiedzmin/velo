@@ -10,7 +10,7 @@ pub(super) fn attach_to_job(child: &Child) -> Result<Job, RunError> {
     // job is released, every child in the job is terminated. That's the
     // whole reason this exists.
     info.limit_kill_on_job_close();
-    let job = Job::create_with_limit_info(&mut info).map_err(|e| RunError::Job(e.to_string()))?;
+    let job = Job::create_with_limit_info(&info).map_err(|e| RunError::Job(e.to_string()))?;
 
     let pid = child.id().ok_or_else(|| RunError::Job("child has no pid".into()))?;
     let handle = open_process_handle(pid)?;

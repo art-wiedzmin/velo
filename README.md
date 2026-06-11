@@ -113,7 +113,7 @@ Both locations hold `velo.db`, `sing-box.log`, `last-config.json`, and
 ## Contributing
 
 ```sh
-cd src-tauri && cargo test --lib    # 63 tests, offline
+cd src-tauri && cargo test --lib    # 82 tests, offline
 npm run check                       # svelte-check, 0 errors expected
 ```
 

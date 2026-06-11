@@ -1,18 +1,15 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Mode {
     /// Local mixed (SOCKS5+HTTP) only. App-level routing happens via the
     /// Windows system proxy.
+    #[default]
     Sysproxy,
     /// TUN interface (+ the mixed inbound for compatibility). Process-level
     /// whitelist/blacklist routing becomes available in this mode.
     Tun,
 }
 
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::Sysproxy
-    }
-}
 
 /// Whitelist: only listed apps go via proxy, everything else is direct.
 /// Blacklist: everything goes via proxy, listed apps bypass to direct.
