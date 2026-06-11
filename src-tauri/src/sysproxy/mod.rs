@@ -70,15 +70,18 @@ impl Snapshot {
         let _ = std::fs::remove_file(data_dir.join(SNAPSHOT_FILE));
     }
 
-    /// If a persisted snapshot exists, load it and delete the file. Returns
-    /// `None` on missing file; returns `None` and deletes the file on parse
-    /// errors (stale garbage can't help us, keeping it around just blocks
-    /// future recoveries).
-    pub fn consume_stale(data_dir: &std::path::Path) -> Option<Self> {
+    /// If a persisted snapshot exists, load it — without deleting the file.
+    /// The caller deletes via [`forget`] only after the restore actually
+    /// succeeded; deleting first would destroy the only record of the user's
+    /// pre-velo state when the registry write fails. Corrupt files are the
+    /// exception: garbage can't help us and keeping it blocks future saves.
+    pub fn load_stale(data_dir: &std::path::Path) -> Option<Self> {
         let path = data_dir.join(SNAPSHOT_FILE);
         let raw = std::fs::read_to_string(&path).ok()?;
         let snap = serde_json::from_str::<Self>(&raw).ok();
-        let _ = std::fs::remove_file(&path);
+        if snap.is_none() {
+            let _ = std::fs::remove_file(&path);
+        }
         snap
     }
 }
@@ -130,10 +133,7 @@ fn apply(values: Option<(u32, &str, &str)>) -> Result<Snapshot, Error> {
         }
         Ok(snap)
     })
-    .and_then(|snap| {
-        notify_wininet();
-        Ok(snap)
-    })
+    .inspect(|_| notify_wininet())
 }
 
 #[cfg(windows)]
@@ -282,7 +282,7 @@ mod persist_tests {
     }
 
     #[test]
-    fn save_then_consume_roundtrips() {
+    fn save_then_load_roundtrips_and_keeps_file() {
         let dir = tmp_dir();
         let s = Snapshot {
             enable: Some(0),
@@ -292,11 +292,15 @@ mod persist_tests {
         s.save(&dir).unwrap();
         assert!(dir.join(SNAPSHOT_FILE).is_file());
 
-        let recovered = Snapshot::consume_stale(&dir).expect("present");
+        let recovered = Snapshot::load_stale(&dir).expect("present");
         assert_eq!(recovered.enable, Some(0));
         assert_eq!(recovered.server, None);
         assert_eq!(recovered.override_list.as_deref(), Some("<local>"));
-        assert!(!dir.join(SNAPSHOT_FILE).is_file(), "file removed after consume");
+        // The file must survive the load: it's deleted only after the
+        // registry restore succeeds, via forget().
+        assert!(dir.join(SNAPSHOT_FILE).is_file(), "file kept until forget()");
+        Snapshot::forget(&dir);
+        assert!(!dir.join(SNAPSHOT_FILE).is_file());
     }
 
     #[test]
@@ -316,22 +320,22 @@ mod persist_tests {
         let replacement = Snapshot::default();
         replacement.save(&dir).unwrap();
 
-        let recovered = Snapshot::consume_stale(&dir).expect("present");
+        let recovered = Snapshot::load_stale(&dir).expect("present");
         assert_eq!(recovered.enable, Some(1));
         assert_eq!(recovered.server.as_deref(), Some("corp.proxy:8080"));
     }
 
     #[test]
-    fn consume_stale_missing_is_none() {
+    fn load_stale_missing_is_none() {
         let dir = tmp_dir();
-        assert!(Snapshot::consume_stale(&dir).is_none());
+        assert!(Snapshot::load_stale(&dir).is_none());
     }
 
     #[test]
-    fn consume_stale_deletes_corrupt_file() {
+    fn load_stale_deletes_corrupt_file() {
         let dir = tmp_dir();
         std::fs::write(dir.join(SNAPSHOT_FILE), b"not valid json{{{").unwrap();
-        assert!(Snapshot::consume_stale(&dir).is_none());
+        assert!(Snapshot::load_stale(&dir).is_none());
         assert!(!dir.join(SNAPSHOT_FILE).is_file(), "garbage cleared");
     }
 

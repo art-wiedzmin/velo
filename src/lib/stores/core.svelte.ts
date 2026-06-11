@@ -42,8 +42,14 @@ export class CoreStore {
   }
 
   async connect(sp: StoredProfile): Promise<void> {
-    if (this.state.kind === "connected" || this.state.kind === "switching") {
+    if (this.state.kind === "connected") {
       return this.switchTo(sp);
+    }
+    // Busy transitions ignore the click. Forwarding "switching" to switchTo
+    // bounced straight back here (switchTo redirects non-connected states to
+    // connect) — infinite mutual recursion until stack overflow.
+    if (this.state.kind === "connecting" || this.state.kind === "switching" || this.state.kind === "disconnecting") {
+      return;
     }
     this.state = { kind: "connecting", target: sp };
     try {
@@ -121,7 +127,14 @@ export class CoreStore {
         reason: "sing-box exited during handshake",
         lastTarget: this.state.target,
       };
-    } else if (k === "connected" || k === "switching" || k === "disconnecting") {
+    } else if (k === "connected") {
+      // Genuinely external death — in every velo-initiated stop the state
+      // has already left "connected" before the kill (disconnecting /
+      // switching). The backend still holds the dead Runner and possibly an
+      // active sysproxy pointing at the dead port; core_stop reaps both.
+      this.state = { kind: "disconnected" };
+      void api.coreStop().then(() => sysproxy.refresh()).catch(() => {});
+    } else if (k === "switching" || k === "disconnecting") {
       this.state = { kind: "disconnected" };
     }
   }

@@ -12,7 +12,8 @@ use std::ptr;
 use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegQueryValueExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
+    HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE,
+    REG_SZ,
 };
 
 pub(super) fn wide(s: &str) -> Vec<u16> {
@@ -70,9 +71,7 @@ pub(super) fn read_dword(h: HKEY, name: &str) -> Result<Option<u32>, Error> {
     };
     match rc {
         ERROR_SUCCESS if kind == REG_DWORD => Ok(Some(val)),
-        ERROR_SUCCESS => Err(Error::Registry(format!(
-            "ProxyEnable wrong type: {kind}"
-        ))),
+        ERROR_SUCCESS => Err(Error::Registry(format!("{name} wrong type: {kind}"))),
         x if x == ERROR_FILE_NOT_FOUND => Ok(None),
         other => Err(Error::Registry(format!(
             "RegQueryValueExW({name}): {other}"
@@ -101,7 +100,10 @@ pub(super) fn read_sz(h: HKEY, name: &str) -> Result<Option<String>, Error> {
     if rc != ERROR_SUCCESS {
         return Err(Error::Registry(format!("RegQueryValueExW({name}): {rc}")));
     }
-    if kind != REG_SZ {
+    // Some corporate tooling writes ProxyServer as REG_EXPAND_SZ; treat it
+    // as a plain string (restore normalizes to REG_SZ, value preserved)
+    // rather than hard-failing the snapshot and blocking enable().
+    if kind != REG_SZ && kind != REG_EXPAND_SZ {
         return Err(Error::Registry(format!("{name} wrong type: {kind}")));
     }
     if size == 0 {

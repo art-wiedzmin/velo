@@ -1,24 +1,11 @@
 use super::AppStore;
-use crate::{config, core, parser, profile, routing, store, subscription};
+use crate::{config, core, parser, profile, routing, store};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn parse_any(url: &str) -> Result<profile::Profile, String> {
     parser::parse_any(url).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn fetch_subscription(url: String) -> Result<subscription::SubscriptionResult, String> {
-    subscription::fetch(&url)
-        .await
-        .map(|f| f.result)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn build_singbox_config(profile: profile::Profile) -> Result<serde_json::Value, String> {
-    Ok(config::singbox::build(&profile, &config::singbox::Options::default()))
 }
 
 #[tauri::command]
@@ -31,8 +18,15 @@ pub async fn core_start(
     profile_id: Option<i64>,
 ) -> Result<(), String> {
     let mut guard = state.inner.lock().await;
-    if guard.is_some() {
-        return Err("core already running".into());
+    if let Some(r) = guard.as_mut() {
+        if r.is_alive() {
+            return Err("core already running".into());
+        }
+        // sing-box died externally (crash, kill). Reap the stale Runner so
+        // reconnect isn't blocked behind a dead process.
+        if let Some(dead) = guard.take() {
+            dead.stop(core::tauri_sink(app.clone())).await;
+        }
     }
     let opts = build_options_from_store(&store.0).await;
     // TUN inbound on Windows requires admin. Fail early with an actionable
@@ -42,6 +36,10 @@ pub async fn core_start(
         return Err("Tunnel mode requires administrator privileges. Relaunch velo as admin.".into());
     }
 
+    let data_dir = crate::startup::resolve_data_dir(&app).ok();
+    let log_path = data_dir.clone().map(|d| d.join("sing-box.log"));
+    let sink = core::tauri_sink_with_file(app.clone(), log_path);
+
     // Clear the decks before sing-box tries to bind:
     //   1. Evict any other proxy client squatting on our mixed port. Users
     //      routinely leave v2rayTun/Clash/etc. running and would otherwise
@@ -49,27 +47,36 @@ pub async fn core_start(
     //   2. Wipe a leftover `ProxyEnable=1, ProxyServer=127.0.0.1:<dead>`
     //      from a prior velo session that didn't clean up — otherwise
     //      WinINet apps will hang on our dead port until we re-bind it.
+    // Both poll/sleep synchronously — keep them off the async runtime.
     #[cfg(windows)]
     if opts.mixed_port != 0 {
-        if let Some(evicted) = core::port::evict_listener(opts.mixed_port) {
-            eprintln!("evicted PID {evicted} from port {}", opts.mixed_port);
+        let port = opts.mixed_port;
+        let evicted = tokio::task::spawn_blocking(move || {
+            let evicted = core::port::evict_listener(port);
+            let _ = crate::sysproxy::clear_orphan_if_dead();
+            evicted
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Some(pid) = evicted {
+            sink.log(core::LogLine {
+                stream: core::Stream::Stdout,
+                line: format!("velo: evicted PID {pid} from port {port}"),
+            });
         }
-        let _ = crate::sysproxy::clear_orphan_if_dead();
     }
 
     let cfg = config::singbox::build(&profile, &opts);
     // Dump the generated config next to the SQLite DB for debugging — when
     // the user says "no internet", they (or I) can open last-config.json and
     // see exactly what we handed to sing-box. Overwritten every start.
-    let data_dir = crate::startup::resolve_data_dir(&app).ok();
     if let Some(dir) = data_dir.as_ref() {
         let _ = std::fs::write(
             dir.join("last-config.json"),
             serde_json::to_string_pretty(&cfg).unwrap_or_default(),
         );
     }
-    let log_path = data_dir.clone().map(|d| d.join("sing-box.log"));
-    let sink = core::tauri_sink_with_file(app.clone(), log_path);
     let runner = core::Runner::start(&cfg, sink).await.map_err(|e| e.to_string())?;
     *guard = Some(runner);
 
@@ -133,8 +140,16 @@ pub async fn core_stop(
     let mut disable_result: Result<(), String> = Ok(());
     if let Some(snap) = sys_guard.take() {
         disable_result = crate::sysproxy::disable(&snap).map_err(|e| e.to_string());
-        if let Ok(dir) = crate::startup::resolve_data_dir(&app) {
-            crate::sysproxy::Snapshot::forget(&dir);
+        if disable_result.is_ok() {
+            if let Ok(dir) = crate::startup::resolve_data_dir(&app) {
+                crate::sysproxy::Snapshot::forget(&dir);
+            }
+        } else {
+            // Restore failed: keep both the in-memory snapshot (a later stop
+            // retries) and the on-disk copy (next launch recovers). Dropping
+            // them here would destroy the only records of the user's
+            // pre-velo proxy state.
+            *sys_guard = Some(snap);
         }
     }
     drop(sys_guard);
@@ -152,7 +167,15 @@ pub async fn core_stop(
 
 #[tauri::command]
 pub async fn core_status(state: State<'_, core::CoreState>) -> Result<bool, String> {
-    Ok(state.inner.lock().await.is_some())
+    // try_wait-based: a crashed sing-box must not report "running" — the
+    // stale Runner is reaped on the next core_start/core_stop.
+    Ok(state
+        .inner
+        .lock()
+        .await
+        .as_mut()
+        .map(|r| r.is_alive())
+        .unwrap_or(false))
 }
 
 /// Reads persisted mode/routing settings and assembles the sing-box config

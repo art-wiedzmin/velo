@@ -10,7 +10,9 @@ pub const AUTOSTART_FLAG: &str = "--autostart";
 pub const PORTABLE_MARKER: &str = "velo.portable";
 
 pub fn is_autostart_launch() -> bool {
-	std::env::args().any(|a| a == AUTOSTART_FLAG)
+	// args_os: the Unicode-validating `args()` panics on malformed argv,
+	// which third-party launchers can produce.
+	std::env::args_os().any(|a| a == AUTOSTART_FLAG)
 }
 
 pub fn is_portable() -> bool {

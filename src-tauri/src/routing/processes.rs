@@ -13,7 +13,7 @@
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProcessInfo {
@@ -23,13 +23,14 @@ pub struct ProcessInfo {
 
 /// Snapshot of user-space processes with unique .exe paths, sorted by name.
 pub fn processes_snapshot() -> Vec<ProcessInfo> {
-    let mut sys = System::new_with_specifics(
-        RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
-    );
+    // One refresh, exe paths only — `new_with_specifics(everything())`
+    // followed by a second full refresh enumerated every process twice and
+    // collected CPU/memory/disk stats the picker never reads.
+    let mut sys = System::new();
     sys.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::everything(),
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
     );
 
     let system_root = system_root_lowercase();
@@ -64,7 +65,7 @@ pub fn processes_snapshot() -> Vec<ProcessInfo> {
         });
     }
 
-    out.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    out.sort_by_key(|a| a.name.to_ascii_lowercase());
     out
 }
 

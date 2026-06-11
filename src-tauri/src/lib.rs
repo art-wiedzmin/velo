@@ -20,7 +20,6 @@ use sysproxy::SysProxyState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(core::CoreState::default());
@@ -31,10 +30,21 @@ pub fn run() {
             // power loss). Restore the user's pre-velo WinINet state now,
             // before the window is shown — otherwise they'd see "no
             // internet" because the registry still points at a dead port.
+            // The file is deleted only after the restore succeeds, so a
+            // failed registry write keeps the recovery possible next launch.
             if let Ok(dir) = startup::resolve_data_dir(app.handle()) {
-                if let Some(stale) = sysproxy::Snapshot::consume_stale(&dir) {
-                    let _ = sysproxy::disable(&stale);
+                if let Some(stale) = sysproxy::Snapshot::load_stale(&dir) {
+                    if sysproxy::disable(&stale).is_ok() {
+                        sysproxy::Snapshot::forget(&dir);
+                    }
                 }
+            }
+            // No-snapshot leftovers (e.g. a crash before save, or another
+            // client's corpse): if the registry points at a dead local port,
+            // clear ProxyEnable so WinINet apps aren't stuck offline.
+            #[cfg(windows)]
+            {
+                let _ = sysproxy::clear_orphan_if_dead();
             }
             let store = store::Store::open(&db_path)
                 .map_err(|e| format!("open store at {}: {e}", db_path.display()))?;
@@ -46,8 +56,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::core_cmds::parse_any,
-            commands::core_cmds::fetch_subscription,
-            commands::core_cmds::build_singbox_config,
             commands::core_cmds::core_start,
             commands::core_cmds::core_stop,
             commands::core_cmds::core_status,
@@ -60,7 +68,6 @@ pub fn run() {
             commands::profiles::profiles_duplicate,
             commands::subscriptions::subscriptions_list,
             commands::subscriptions::subscriptions_add,
-            commands::subscriptions::subscriptions_rename,
             commands::subscriptions::subscriptions_delete,
             commands::subscriptions::subscriptions_sync,
             commands::settings::settings_get,
@@ -140,9 +147,12 @@ fn restore_sysproxy_on_exit(app: &AppHandle) {
     let Some(snap) = guard.take() else {
         return;
     };
-    let _ = sysproxy::disable(&snap);
-    if let Ok(dir) = startup::resolve_data_dir(app) {
-        sysproxy::Snapshot::forget(&dir);
+    // Delete the persisted copy only when the restore landed — otherwise the
+    // next launch still has the file to recover from.
+    if sysproxy::disable(&snap).is_ok() {
+        if let Ok(dir) = startup::resolve_data_dir(app) {
+            sysproxy::Snapshot::forget(&dir);
+        }
     }
     // Final safety net — covers the case where the snapshot restored us to
     // a prior `ProxyEnable=1` state that itself referenced our now-dead port.

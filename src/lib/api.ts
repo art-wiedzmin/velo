@@ -9,17 +9,13 @@ import type {
   RoutingRule,
   StoredProfile,
   StoredSubscription,
-  SubscriptionResult,
   SyncApplied,
 } from "./types";
 
-// --- Parsing & subscription fetch ---------------------------------------
+// --- Parsing -------------------------------------------------------------
 
 export const parseAny = (url: string): Promise<Profile> =>
   invoke("parse_any", { url });
-
-export const fetchSubscription = (url: string): Promise<SubscriptionResult> =>
-  invoke("fetch_subscription", { url });
 
 // --- Core (runner) -------------------------------------------------------
 
@@ -62,11 +58,6 @@ export const subscriptionsAdd = (
   url: string,
 ): Promise<StoredSubscription> =>
   invoke("subscriptions_add", { name, url });
-
-export const subscriptionsRename = (
-  id: number,
-  name: string,
-): Promise<void> => invoke("subscriptions_rename", { id, name });
 
 export const subscriptionsDelete = (id: number): Promise<void> =>
   invoke("subscriptions_delete", { id });

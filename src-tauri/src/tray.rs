@@ -14,7 +14,6 @@ use tauri::{
 const TRAY_ID: &str = "main";
 const MAIN_WINDOW: &str = "main";
 const EVENT_ACTION: &str = "tray://action";
-const EVENT_CORE_STATE: &str = "core://state";
 
 #[derive(serde::Deserialize)]
 struct CoreStateEvent {
@@ -90,7 +89,7 @@ pub fn install(app: &App) -> tauri::Result<()> {
     // label. Single source of truth: the `core://state` event stream.
     let app_h = app.handle().clone();
     let toggle_item = toggle.clone();
-    app.listen(EVENT_CORE_STATE, move |event| {
+    app.listen(crate::core::STATE_EVENT, move |event| {
         let running = matches!(
             serde_json::from_str::<CoreStateEvent>(event.payload()),
             Ok(ev) if ev.running

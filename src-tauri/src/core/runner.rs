@@ -83,8 +83,13 @@ impl Runner {
 
         let stdout = child.stdout.take().map(BufReader::new);
         let stderr = child.stderr.take().map(BufReader::new);
-        let stdout_task = stdout.map(|r| spawn_reader(sink.clone(), r, Stream::Stdout));
-        let stderr_task = stderr.map(|r| spawn_reader(sink.clone(), r, Stream::Stderr));
+        // The stdout reader doubles as the death watcher: its EOF means the
+        // process closed its pipes (exit or crash), so it emits state(false).
+        // Without this an externally-killed sing-box leaves the UI and tray
+        // showing "connected" forever. Normal `stop` re-emits state(false)
+        // afterwards — listeners treat the duplicate as a no-op.
+        let stdout_task = stdout.map(|r| spawn_reader(sink.clone(), r, Stream::Stdout, true));
+        let stderr_task = stderr.map(|r| spawn_reader(sink.clone(), r, Stream::Stderr, false));
         sink.state(true);
 
         // Best-effort: start WS subscribers to the Clash API. If the config
@@ -117,7 +122,14 @@ impl Runner {
         // shutdown would require signals sing-box doesn't consume portably on
         // Windows. TUN mode can make the process hang briefly while WinTUN
         // unwinds routes — hence the timeout fences.
-        let _ = self.child.kill().await;
+        if let Err(e) = self.child.kill().await {
+            // Job Object still reaps the child when we drop; surface the
+            // anomaly instead of silently reporting "stopped".
+            sink.log(LogLine {
+                stream: Stream::Stderr,
+                line: format!("velo: kill sing-box failed: {e}"),
+            });
+        }
         let _ = timeout(STOP_BUDGET, self.child.wait()).await;
 
         // Reader tasks normally exit when the pipe closes (EOF). If they
@@ -137,6 +149,13 @@ impl Runner {
     pub fn pid(&self) -> Option<u32> {
         self.child.id()
     }
+
+    /// Whether the child is still running. `false` after an external kill or
+    /// crash — callers use this to evict a stale Runner from CoreState so
+    /// status reports stay truthful and reconnect isn't blocked.
+    pub fn is_alive(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
 }
 
 impl Drop for Runner {
@@ -152,7 +171,12 @@ impl Drop for Runner {
     }
 }
 
-fn spawn_reader<Io>(sink: Arc<dyn EventSink>, mut reader: BufReader<Io>, stream: Stream) -> JoinHandle<()>
+fn spawn_reader<Io>(
+    sink: Arc<dyn EventSink>,
+    mut reader: BufReader<Io>,
+    stream: Stream,
+    signal_exit_on_eof: bool,
+) -> JoinHandle<()>
 where
     Io: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
@@ -174,6 +198,9 @@ where
                 }
                 Err(_) => break,
             }
+        }
+        if signal_exit_on_eof {
+            sink.state(false);
         }
     })
 }
