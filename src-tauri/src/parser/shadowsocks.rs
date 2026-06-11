@@ -24,8 +24,11 @@ pub fn parse(input: &str) -> Result<Profile, ParseError> {
     })?;
 
     // SIP002: userinfo is `base64(method:password)`, then @host:port and
-    // optional query/fragment just like a regular URL.
-    if let Some(at_idx) = payload.find('@') {
+    // optional query/fragment just like a regular URL. The `@` probe must
+    // ignore the fragment — legacy URLs with `@` in the name (`ss://b64#a@b`)
+    // would otherwise be misrouted into this branch.
+    let before_fragment = &payload[..payload.find('#').unwrap_or(payload.len())];
+    if let Some(at_idx) = before_fragment.find('@') {
         let (userinfo_raw, rest) = payload.split_at(at_idx);
         let userinfo = percent_decode_str(userinfo_raw)
             .decode_utf8_lossy()
@@ -34,7 +37,7 @@ pub fn parse(input: &str) -> Result<Profile, ParseError> {
 
         let reconstructed = format!("ss://ignore@{}", &rest[1..]);
         let url = Url::parse(&reconstructed)?;
-        let host = url.host_str().ok_or(ParseError::MissingHost)?.to_owned();
+        let host = extract_host(&url)?;
         let port = url.port().ok_or(ParseError::MissingPort)?;
 
         return Ok(Profile {
@@ -153,5 +156,23 @@ mod tests {
         assert_eq!(p.address, "10.0.0.1");
         assert_eq!(p.port, 8388);
         assert_eq!(p.name, "legacy");
+    }
+
+    #[test]
+    fn legacy_with_at_in_fragment_stays_legacy() {
+        // `@` inside the name must not flip detection into the SIP002 branch.
+        let payload = base64::engine::general_purpose::STANDARD
+            .encode("aes-128-gcm:secret@10.0.0.1:8388".as_bytes());
+        let url = format!("ss://{payload}#node@home");
+        let p = parse(&url).unwrap();
+        assert_eq!(p.address, "10.0.0.1");
+        assert_eq!(p.name, "node@home");
+    }
+
+    #[test]
+    fn sip002_ipv6_host_loses_brackets() {
+        let p = parse("ss://aes-256-gcm:pwd@[2001:db8::2]:8388#v6").unwrap();
+        assert_eq!(p.address, "2001:db8::2");
+        assert_eq!(p.port, 8388);
     }
 }

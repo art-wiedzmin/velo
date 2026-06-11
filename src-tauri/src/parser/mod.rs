@@ -10,18 +10,21 @@ pub use error::ParseError;
 use crate::profile::Profile;
 
 /// Dispatch a proxy URL to the right protocol parser by scheme.
+/// Schemes are case-insensitive (RFC 3986); copy-pasted URLs occasionally
+/// arrive uppercased, so normalize before dispatch.
 pub fn parse_any(url: &str) -> Result<Profile, ParseError> {
     let trimmed = url.trim();
-    let scheme = trimmed
+    let (scheme, rest) = trimmed
         .split_once("://")
-        .map(|(s, _)| s)
         .ok_or_else(|| ParseError::InvalidPayload("missing `://` in URL".into()))?;
+    let scheme = scheme.to_ascii_lowercase();
+    let normalized = format!("{scheme}://{rest}");
 
-    match scheme {
-        "vless" => vless::parse(trimmed),
-        "vmess" => vmess::parse(trimmed),
-        "trojan" => trojan::parse(trimmed),
-        "ss" => shadowsocks::parse(trimmed),
+    match scheme.as_str() {
+        "vless" => vless::parse(&normalized),
+        "vmess" => vmess::parse(&normalized),
+        "trojan" => trojan::parse(&normalized),
+        "ss" => shadowsocks::parse(&normalized),
         other => Err(ParseError::UnsupportedScheme(other.to_owned())),
     }
 }
@@ -50,5 +53,13 @@ mod tests {
             parse_any("hysteria2://pw@h:443"),
             Err(ParseError::UnsupportedScheme(_))
         ));
+    }
+
+    #[test]
+    fn scheme_is_case_insensitive() {
+        let p = parse_any("VLESS://00000000-0000-4000-8000-000000000000@h:443?type=tcp").unwrap();
+        assert_eq!(p.protocol, Protocol::Vless);
+        let p = parse_any("SS://aes-256-gcm:pwd@1.2.3.4:8388#n").unwrap();
+        assert_eq!(p.protocol, Protocol::Shadowsocks);
     }
 }

@@ -38,8 +38,12 @@ pub fn parse(input: &str) -> Result<Profile, ParseError> {
         .and_then(Value::as_str)
         .ok_or(ParseError::MissingHost)?
         .to_owned();
-    let port = get_int(obj.get("port")).ok_or(ParseError::MissingPort)? as u16;
-    let alter_id = get_int(obj.get("aid")).map(|v| v as u32);
+    let port_raw = get_int(obj.get("port")).ok_or(ParseError::MissingPort)?;
+    let port = u16::try_from(port_raw)
+        .map_err(|_| ParseError::InvalidInt(format!("port {port_raw}")))?;
+    let alter_id = get_int(obj.get("aid"))
+        .map(|v| u32::try_from(v).map_err(|_| ParseError::InvalidInt(format!("aid {v}"))))
+        .transpose()?;
     let cipher = obj
         .get("scy")
         .and_then(Value::as_str)
@@ -80,6 +84,7 @@ pub fn parse(input: &str) -> Result<Profile, ParseError> {
     let name = obj
         .get("ps")
         .and_then(Value::as_str)
+        .filter(|s| !s.trim().is_empty())
         .map(str::to_owned)
         .unwrap_or_else(|| format!("{address}:{port}"));
 
@@ -169,5 +174,23 @@ mod tests {
     #[test]
     fn rejects_bad_base64() {
         assert!(matches!(parse("vmess://!!!"), Err(ParseError::InvalidBase64(_))));
+    }
+
+    #[test]
+    fn rejects_out_of_range_port() {
+        let json = r#"{"add":"x.com","port":70000,"id":"00000000-0000-4000-8000-000000000000","net":"tcp","tls":""}"#;
+        assert!(matches!(parse(&encode(json)), Err(ParseError::InvalidInt(_))));
+    }
+
+    #[test]
+    fn rejects_negative_alter_id() {
+        let json = r#"{"add":"x.com","port":443,"id":"00000000-0000-4000-8000-000000000000","aid":-1,"net":"tcp","tls":""}"#;
+        assert!(matches!(parse(&encode(json)), Err(ParseError::InvalidInt(_))));
+    }
+
+    #[test]
+    fn empty_ps_falls_back_to_host_port() {
+        let json = r#"{"add":"x.com","port":443,"id":"00000000-0000-4000-8000-000000000000","ps":"","net":"tcp","tls":""}"#;
+        assert_eq!(parse(&encode(json)).unwrap().name, "x.com:443");
     }
 }

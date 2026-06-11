@@ -20,7 +20,7 @@ pub enum ParseError {
     UnsupportedTransport(String),
     #[error("unsupported security: {0}")]
     UnsupportedSecurity(String),
-    #[error("reality requires `pbk` and `sid`")]
+    #[error("reality requires `pbk`")]
     RealityMissingFields,
     #[error("unsupported flow: {0}")]
     UnsupportedFlow(String),

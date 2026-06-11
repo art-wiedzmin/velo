@@ -7,26 +7,9 @@
 use super::common::*;
 use super::error::ParseError;
 use crate::profile::*;
-use percent_encoding::percent_decode_str;
-use url::Url;
 
 pub fn parse(input: &str) -> Result<Profile, ParseError> {
-    let url = Url::parse(input.trim())?;
-    if url.scheme() != "trojan" {
-        return Err(ParseError::SchemeMismatch {
-            expected: "trojan",
-            got: url.scheme().to_owned(),
-        });
-    }
-
-    let pwd_raw = url.username();
-    if pwd_raw.is_empty() {
-        return Err(ParseError::MissingCredential);
-    }
-    let password = percent_decode_str(pwd_raw).decode_utf8_lossy().into_owned();
-
-    let host = url.host_str().ok_or(ParseError::MissingHost)?.to_owned();
-    let port = url.port().ok_or(ParseError::MissingPort)?;
+    let (url, password, host, port) = parse_authority(input, "trojan")?;
 
     let qs = query_map(&url);
     let transport = parse_transport(qs.get("type").map(String::as_str).unwrap_or("tcp"))?;

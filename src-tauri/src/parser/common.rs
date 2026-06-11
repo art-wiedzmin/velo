@@ -11,11 +11,48 @@ use std::collections::HashMap;
 use url::Url;
 
 /// Decode URL fragment as the human-readable profile name. Falls back to
-/// `host:port` so every profile has a stable label.
+/// `host:port` so every profile has a stable label — including the trailing
+/// `#` case where the fragment is present but empty.
 pub fn extract_name(url: &Url, host: &str, port: u16) -> String {
     url.fragment()
         .map(|f| percent_decode_str(f).decode_utf8_lossy().into_owned())
+        .filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| format!("{host}:{port}"))
+}
+
+/// Host with IPv6 brackets stripped. `Url::host_str` keeps the brackets
+/// (`[2001:db8::1]`), which sing-box rejects as a `server` value and which
+/// `IpAddr::parse` doesn't recognize — so the SNI fallback would treat the
+/// address as a hostname.
+pub fn extract_host(url: &Url) -> Result<String, ParseError> {
+    match url.host().ok_or(ParseError::MissingHost)? {
+        url::Host::Ipv6(a) => Ok(a.to_string()),
+        _ => Ok(url.host_str().ok_or(ParseError::MissingHost)?.to_owned()),
+    }
+}
+
+/// Shared `scheme://credential@host:port` skeleton for vless/trojan.
+/// Returns the parsed URL plus percent-decoded credential and normalized
+/// host/port.
+pub fn parse_authority(
+    input: &str,
+    scheme: &'static str,
+) -> Result<(Url, String, String, u16), ParseError> {
+    let url = Url::parse(input.trim())?;
+    if url.scheme() != scheme {
+        return Err(ParseError::SchemeMismatch {
+            expected: scheme,
+            got: url.scheme().to_owned(),
+        });
+    }
+    let raw = url.username();
+    if raw.is_empty() {
+        return Err(ParseError::MissingCredential);
+    }
+    let credential = percent_decode_str(raw).decode_utf8_lossy().into_owned();
+    let host = extract_host(&url)?;
+    let port = url.port().ok_or(ParseError::MissingPort)?;
+    Ok((url, credential, host, port))
 }
 
 pub fn query_map(url: &Url) -> HashMap<String, String> {
@@ -25,13 +62,15 @@ pub fn query_map(url: &Url) -> HashMap<String, String> {
 }
 
 pub fn parse_transport(s: &str) -> Result<Transport, ParseError> {
+    // `xhttp`/`splithttp` deliberately rejected: sing-box has no xhttp
+    // transport, so accepting the URL would defer the failure to connect
+    // time with an opaque sidecar error instead of a per-line import error.
     Ok(match s {
         "" | "tcp" | "raw" => Transport::Tcp,
         "ws" => Transport::Ws,
         "grpc" => Transport::Grpc,
         "h2" | "http" => Transport::H2,
         "httpupgrade" => Transport::Httpupgrade,
-        "xhttp" | "splithttp" => Transport::Xhttp,
         other => return Err(ParseError::UnsupportedTransport(other.to_owned())),
     })
 }
@@ -100,15 +139,18 @@ pub fn build_tls(
         .unwrap_or(false);
 
     let reality = if security == Security::Reality {
-        let pbk = qs.get("pbk").filter(|s| !s.is_empty()).cloned();
-        let sid = qs.get("sid").cloned();
-        match (pbk, sid) {
-            (Some(public_key), Some(short_id)) => Some(RealityParams {
-                public_key,
-                short_id,
-            }),
-            _ => return Err(ParseError::RealityMissingFields),
-        }
+        let public_key = qs
+            .get("pbk")
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .ok_or(ParseError::RealityMissingFields)?;
+        // `sid` is optional in the wild (sing-box accepts an empty short_id);
+        // requiring it rejected real provider URLs.
+        let short_id = qs.get("sid").cloned().unwrap_or_default();
+        Some(RealityParams {
+            public_key,
+            short_id,
+        })
     } else {
         None
     };

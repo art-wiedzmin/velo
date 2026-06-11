@@ -6,27 +6,10 @@
 use super::common::*;
 use super::error::ParseError;
 use crate::profile::*;
-use percent_encoding::percent_decode_str;
-use url::Url;
 
 pub fn parse(input: &str) -> Result<Profile, ParseError> {
-    let url = Url::parse(input.trim())?;
-    if url.scheme() != "vless" {
-        return Err(ParseError::SchemeMismatch {
-            expected: "vless",
-            got: url.scheme().to_owned(),
-        });
-    }
-
-    let uuid_raw = url.username();
-    if uuid_raw.is_empty() {
-        return Err(ParseError::MissingCredential);
-    }
-    let uuid = percent_decode_str(uuid_raw).decode_utf8_lossy().into_owned();
+    let (url, uuid, host, port) = parse_authority(input, "vless")?;
     uuid::Uuid::parse_str(&uuid).map_err(|_| ParseError::InvalidUuid(uuid.clone()))?;
-
-    let host = url.host_str().ok_or(ParseError::MissingHost)?.to_owned();
-    let port = url.port().ok_or(ParseError::MissingPort)?;
 
     let qs = query_map(&url);
     let transport = parse_transport(qs.get("type").map(String::as_str).unwrap_or("tcp"))?;
@@ -135,5 +118,34 @@ mod tests {
         let url = "vless://00000000-0000-4000-8000-000000000000@1.2.3.4:443?security=tls&type=tcp";
         let p = parse(url).unwrap();
         assert_eq!(p.tls.unwrap().sni, None);
+    }
+
+    #[test]
+    fn ipv6_host_loses_brackets_and_gets_no_sni() {
+        let url = "vless://00000000-0000-4000-8000-000000000000@[2001:db8::1]:443?security=tls&type=tcp";
+        let p = parse(url).unwrap();
+        assert_eq!(p.address, "2001:db8::1", "brackets must be stripped");
+        assert_eq!(p.tls.unwrap().sni, None, "raw IP must not become SNI");
+    }
+
+    #[test]
+    fn reality_without_sid_defaults_to_empty() {
+        let url = "vless://00000000-0000-4000-8000-000000000000@x.example:443\
+                   ?security=reality&pbk=AAA&type=tcp";
+        let p = parse(url).unwrap();
+        assert_eq!(p.tls.unwrap().reality.unwrap().short_id, "");
+    }
+
+    #[test]
+    fn empty_fragment_falls_back_to_host_port() {
+        let url = "vless://00000000-0000-4000-8000-000000000000@x.example:443?type=tcp#";
+        let p = parse(url).unwrap();
+        assert_eq!(p.name, "x.example:443");
+    }
+
+    #[test]
+    fn xhttp_transport_rejected_at_parse() {
+        let url = "vless://00000000-0000-4000-8000-000000000000@x.example:443?type=xhttp";
+        assert!(matches!(parse(url), Err(ParseError::UnsupportedTransport(_))));
     }
 }
