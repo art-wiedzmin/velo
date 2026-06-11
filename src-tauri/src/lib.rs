@@ -19,6 +19,10 @@ use sysproxy::SysProxyState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    if startup::is_autostart_launch() {
+        startup::wait_for_session_ready(std::time::Duration::from_secs(120));
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {

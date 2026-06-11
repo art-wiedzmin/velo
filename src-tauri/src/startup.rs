@@ -15,6 +15,28 @@ pub fn is_autostart_launch() -> bool {
 	std::env::args_os().any(|a| a == AUTOSTART_FLAG)
 }
 
+/// The autostart task fires within seconds of logon — before explorer and
+/// the session services WebView2 depends on are up. Initializing the GUI
+/// that early leaves a tray-only zombie: the webview environment silently
+/// never materializes, so the frontend (which owns connect/autoconnect and
+/// tray-action handling) never boots. Block until the shell's taskbar
+/// window exists, then add a grace period for WebView2's own services.
+#[cfg(windows)]
+pub fn wait_for_session_ready(timeout: std::time::Duration) {
+	let deadline = std::time::Instant::now() + timeout;
+	while !shell_present() && std::time::Instant::now() < deadline {
+		std::thread::sleep(std::time::Duration::from_millis(500));
+	}
+	std::thread::sleep(std::time::Duration::from_secs(5));
+}
+
+#[cfg(windows)]
+fn shell_present() -> bool {
+	use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
+	let class: Vec<u16> = "Shell_TrayWnd".encode_utf16().chain([0]).collect();
+	!unsafe { FindWindowW(class.as_ptr(), std::ptr::null()) }.is_null()
+}
+
 pub fn is_portable() -> bool {
 	std::env::current_exe()
 		.ok()
@@ -43,4 +65,15 @@ pub fn resolve_data_dir<R: tauri::Runtime>(
 	};
 	std::fs::create_dir_all(&dir)?;
 	Ok(dir)
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+	#[test]
+	fn shell_present_in_interactive_session() {
+		assert!(
+			super::shell_present(),
+			"explorer's taskbar must exist on an interactive dev machine"
+		);
+	}
 }
