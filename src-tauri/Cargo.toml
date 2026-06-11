@@ -40,7 +40,11 @@ tauri-plugin-dialog = "2.7.1"
 
 [target.'cfg(windows)'.dependencies]
 win32job = "2"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_Networking_WinInet", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_Networking_WinInet", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Com"] }
+# Versions must track what wry pulls in transitively, or COM types won't unify.
+webview2-com = "0.38"
+windows-core = "0.61"
+windows = { version = "0.61", features = ["Win32_Foundation"] }
 
 [dev-dependencies]
 pretty_assertions = "1"
