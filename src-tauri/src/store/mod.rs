@@ -50,15 +50,18 @@ impl Store {
         Self::init(conn)
     }
 
-    fn init(conn: Connection) -> Result<Self> {
+    fn init(mut conn: Connection) -> Result<Self> {
         // Sensible defaults for a desktop app: WAL gives concurrent readers a
         // pass without blocking the writer; foreign keys are off by default in
         // SQLite — enabling them is required for ON DELETE CASCADE to work.
+        // busy_timeout covers the rare second velo instance touching the same
+        // file: brief waits instead of immediate SQLITE_BUSY errors.
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
 
-        migrations::migrate(&conn)?;
+        migrations::migrate(&mut conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -103,6 +106,20 @@ mod tests {
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
         assert_eq!(v as u32, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn schema_newer_than_supported_is_rejected() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            &format!("PRAGMA user_version = {}", CURRENT_SCHEMA_VERSION + 1),
+            [],
+        )
+        .unwrap();
+        assert!(matches!(
+            migrations::migrate(&mut conn),
+            Err(StoreError::SchemaTooNew { .. })
+        ));
     }
 
     #[test]
