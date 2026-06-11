@@ -28,17 +28,19 @@ url = "2"
 percent-encoding = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 base64 = "0.22"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "charset", "socks"] }
+# TLS roots come from rustls-platform-verifier (OS cert store) — the 0.13
+# default; bundled-roots features no longer exist.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2", "charset", "socks"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time"] }
-rusqlite = { version = "0.39", features = ["bundled"] }
-tokio-tungstenite = "0.24"
+rusqlite = { version = "0.40", features = ["bundled"] }
+tokio-tungstenite = "0.29"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }
-tauri-plugin-dialog = "2.7.0"
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+tauri-plugin-dialog = "2.7.1"
 
 [target.'cfg(windows)'.dependencies]
 win32job = "2"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_Networking_WinInet", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_Networking_WinInet", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 pretty_assertions = "1"
