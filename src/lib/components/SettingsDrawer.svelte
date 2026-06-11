@@ -14,11 +14,13 @@
   import Drawer from "$lib/components/Drawer.svelte";
   import { catalog, toast } from "$lib/state.svelte";
   import { fmtTs } from "$lib/format";
+  import { getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
 
   let { open, onClose }: { open: boolean; onClose: () => void } = $props();
 
   let busyId = $state<number | null>(null);
+  let version = $state("");
 
   // Autostart state. The toggle is backed by a Windows scheduled task with
   // `/RL HIGHEST` (velo's exe manifest forces admin, so an HKCU\Run entry
@@ -36,6 +38,7 @@
   let autoBusy = $state(false);
 
   onMount(async () => {
+    getVersion().then((v) => (version = `v${v}`)).catch(() => {});
     try {
       portable = await api.isPortable();
       if (portable) return;
@@ -132,7 +135,7 @@
 
 </script>
 
-<Drawer {open} title="Settings" tag="v0.1.0" {onClose}>
+<Drawer {open} title="Settings" tag={version} {onClose}>
   {#if portable === false}
     <div class="st-sec">
       <div class="st-sec-h">Startup</div>

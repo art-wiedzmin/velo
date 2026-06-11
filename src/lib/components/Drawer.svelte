@@ -19,13 +19,17 @@
   } = $props();
 </script>
 
+<svelte:window onkeydown={(e) => { if (open && e.key === "Escape") onClose() }} />
+
 <div
   class="dr-scrim"
   class:on={open}
   role="presentation"
   onclick={(e) => { if (e.target === e.currentTarget) onClose() }}
 ></div>
-<div class="drawer" class:on={open} role="dialog" aria-label={title} aria-hidden={!open}>
+<!-- inert: the panel stays mounted while closed (slide-out transition), so
+     without it the hidden content remains keyboard-reachable via Tab. -->
+<div class="drawer" class:on={open} role="dialog" aria-label={title} inert={!open}>
   <header class="dr-head">
     <h3>{title}</h3>
     <div class="dr-actions">

@@ -33,7 +33,13 @@
   });
 
   $effect(() => {
-    if (isOpen) void routing.refresh();
+    if (isOpen) {
+      // Fresh view each open: stale search text and a dangling add-menu from
+      // the previous visit would otherwise greet the user.
+      search = "";
+      showAddMenu = false;
+      void routing.refresh();
+    }
   });
 
   const filteredRules = $derived(
@@ -95,6 +101,39 @@
     }
   }
 
+  async function removeRule(id: number) {
+    try {
+      await routing.remove(id);
+    } catch (e) {
+      toast.show(String(e));
+    }
+  }
+
+  async function toggleRule(id: number, enabled: boolean) {
+    try {
+      await routing.toggle(id, enabled);
+    } catch (e) {
+      toast.show(String(e));
+    }
+  }
+
+  async function addRule(path: string, name: string | null) {
+    try {
+      await routing.add(path, name);
+    } catch (e) {
+      toast.show(String(e));
+    }
+  }
+
+  function closeOnOutsideClick(node: HTMLElement) {
+    const handler = (e: PointerEvent) => {
+      if (showAddMenu && !node.contains(e.target as Node)) showAddMenu = false;
+    };
+    document.addEventListener("pointerdown", handler, true);
+    return {
+      destroy: () => document.removeEventListener("pointerdown", handler, true),
+    };
+  }
 </script>
 
 <Drawer open={isOpen} title="Routing" tag={`${activeCount} active · ${offCount} off`} {onClose}>
@@ -145,7 +184,7 @@
       <IconSearch />
       <input placeholder="Filter apps…" bind:value={search} />
     </div>
-    <div style="position:relative">
+    <div style="position:relative" use:closeOnOutsideClick>
       <button class="dr-add" onclick={() => (showAddMenu = !showAddMenu)}>
         + Add
       </button>
@@ -170,7 +209,7 @@
           <div class="app-name">{r.app_name ?? "unknown"}</div>
           <div class="app-path" title={r.app_path}>{r.app_path}</div>
         </div>
-        <button class="app-del" aria-label="Remove" onclick={() => routing.remove(r.id)}>
+        <button class="app-del" aria-label="Remove" onclick={() => void removeRule(r.id)}>
           <IconTrash size={13} variant="short" />
         </button>
         <button
@@ -178,7 +217,7 @@
           class:on={r.enabled}
           aria-pressed={r.enabled}
           aria-label={r.enabled ? "Disable" : "Enable"}
-          onclick={() => routing.toggle(r.id, !r.enabled)}
+          onclick={() => void toggleRule(r.id, !r.enabled)}
         ></button>
       </div>
     {:else}
@@ -192,7 +231,7 @@
 <ProcessPickerModal
   open={showPicker}
   onClose={() => (showPicker = false)}
-  onPick={(path, name) => routing.add(path, name)}
+  onPick={(path, name) => void addRule(path, name)}
 />
 
 <style>

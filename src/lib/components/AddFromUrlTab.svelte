@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Profile URL tab: paste a single vless://, vmess://, trojan://, ss://, hy2://, tuic:// URL.
+  // Profile URL tab: paste a single vless://, vmess://, trojan://, ss:// URL.
   // parseAny runs through the Rust parser so the preview reflects exactly what would be saved.
   // Parse errors are surfaced inline because they are user-input problems, not system failures.
 
@@ -45,8 +45,10 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      urlPreview ? saveUrl() : parseUrl();
+    // Mirror the buttons' disabled state — without the guard a held-down
+    // Ctrl+Enter fires duplicate submissions mid-flight.
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !urlBusy) {
+      void (urlPreview ? saveUrl() : parseUrl());
     }
   }
 </script>
@@ -68,8 +70,6 @@
     <span class="p">vmess</span>
     <span class="p">trojan</span>
     <span class="p">shadowsocks</span>
-    <span class="p">hysteria2</span>
-    <span class="p">tuic</span>
   </div>
 </div>
 

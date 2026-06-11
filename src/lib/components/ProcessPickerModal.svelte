@@ -29,7 +29,10 @@
   }
 
   $effect(() => {
-    if (open) void pickFromRunning();
+    if (open) {
+      pickerSearch = "";
+      void pickFromRunning();
+    }
   });
 
   function addFromPicker(p: ProcessInfo) {

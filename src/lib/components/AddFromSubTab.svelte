@@ -14,6 +14,7 @@
   let subError = $state<string | null>(null);
 
   async function saveSub() {
+    if (subBusy) return;
     subError = null;
     const name = subName.trim();
     const url = subUrl.trim();
@@ -45,7 +46,7 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) saveSub();
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void saveSub();
   }
 </script>
 

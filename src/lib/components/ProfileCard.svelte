@@ -67,10 +67,15 @@
     catalog.selectedId = profile.id;
   }
 
-  function onStar(e: MouseEvent) {
+  async function onStar(e: MouseEvent) {
     e.stopPropagation();
-    catalog.toggleFavorite(profile.id);
-    toast.show(isFav ? "Removed from favorites" : "Added to favorites");
+    const wasFav = isFav;
+    try {
+      await catalog.toggleFavorite(profile.id);
+      toast.show(wasFav ? "Removed from favorites" : "Added to favorites");
+    } catch (err) {
+      toast.show(String(err));
+    }
   }
 
   function onCtxMenu(e: MouseEvent) {

@@ -10,7 +10,7 @@
 >
   <div class="add-plus">+</div>
   <div class="add-label">Add profile</div>
-  <div class="add-hint">Profile URL · Subscription · Manual</div>
+  <div class="add-hint">Profile URL · Subscription</div>
 </button>
 
 <style>

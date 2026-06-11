@@ -17,6 +17,7 @@
     core,
     routing,
     sysproxy,
+    toast,
   } from "$lib/state.svelte";
   import { runAutostartConnect } from "$lib/autostart";
   import type { StoredProfile } from "$lib/types";
@@ -40,7 +41,7 @@
       ]);
       unlisten = await attachEventListeners();
       await runAutostartConnect();
-    })();
+    })().catch((e) => toast.show(`Startup: ${e}`));
 
     // Kill the webview's default context menu ("Reload, Save as, Print…").
     // Our own menu handlers call preventDefault locally; this catches the

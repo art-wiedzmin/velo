@@ -8,8 +8,9 @@
   // Mode switch (Sysproxy/Tunnel) writes to settings and takes effect on the
   // next connect — we don't hot-reload sing-box mid-session.
 
-  import { catalog, core, routing } from "$lib/state.svelte";
+  import { catalog, core, routing, toast } from "$lib/state.svelte";
   import { dispatchConnectAction } from "$lib/actions/connect";
+  import type { CoreMode } from "$lib/types";
   import IconRouting from "$lib/components/icons/IconRouting.svelte";
   import IconSettings from "$lib/components/icons/IconSettings.svelte";
 
@@ -79,6 +80,14 @@
   let profCount = $derived(catalog.profiles.length);
 
   const onConnect = () => void dispatchConnectAction();
+
+  async function setMode(m: CoreMode) {
+    try {
+      await routing.setCoreMode(m);
+    } catch (e) {
+      toast.show(String(e));
+    }
+  }
 </script>
 
 <section class="sb {stateClass}">
@@ -108,13 +117,13 @@
     <button
       class:on={routing.coreMode === "sysproxy"}
       aria-pressed={routing.coreMode === "sysproxy"}
-      onclick={() => { void routing.setCoreMode("sysproxy") }}
+      onclick={() => void setMode("sysproxy")}
     >Sysproxy</button>
     <button
       class:on={routing.coreMode === "tun"}
       aria-pressed={routing.coreMode === "tun"}
       title="Tunnel mode — takes effect on next connect (requires admin)"
-      onclick={() => { void routing.setCoreMode("tun") }}
+      onclick={() => void setMode("tun")}
     >Tunnel</button>
   </div>
 
