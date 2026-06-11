@@ -129,3 +129,83 @@ fn tun_whitelist_routing() {
         },
     );
 }
+
+// `sing-box check` only parses; service wiring runs a second class of
+// validations at START (e.g. 1.13 fatals on a DNS server detouring to a
+// bare direct outbound — which check accepted and v1.1.0 shipped). Actually
+// run the sidecar on an ephemeral port and require the "started" banner.
+// Sysproxy-mode only: TUN needs admin.
+#[test]
+fn run_smoke_sysproxy() {
+    use std::io::Read;
+    let Some(sb) = singbox_path() else {
+        eprintln!("[run_smoke] skipped: no sing-box binary");
+        return;
+    };
+    let port = free_port();
+    let profile = parser::parse_any(
+        "vless://00000000-0000-4000-8000-000000000000@example.invalid:443?security=tls&type=tcp#n",
+    )
+    .expect("parse");
+    let cfg = singbox::build(
+        &profile,
+        &Options { mixed_port: port, clash_api_port: 0, ..Options::default() },
+    );
+    let json = serde_json::to_string_pretty(&cfg).unwrap();
+    let mut tmp = tempfile_like("run_smoke");
+    tmp.write_all(json.as_bytes()).unwrap();
+    let path = tmp.path().clone();
+    drop(tmp);
+
+    let mut child = Command::new(&sb)
+        .args(["run", "-c"])
+        .arg(&path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn sing-box run");
+
+    // sing-box prints the banner within milliseconds; FATAL exits even
+    // faster. Poll up to 5s: exit before the deadline = startup failure.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut exited = None;
+    while std::time::Instant::now() < deadline {
+        if let Some(status) = child.try_wait().expect("try_wait") {
+            exited = Some(status);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    let verdict = match exited {
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            Ok(())
+        }
+        Some(status) => {
+            let mut err = String::new();
+            if let Some(mut s) = child.stderr.take() {
+                let _ = s.read_to_string(&mut err);
+            }
+            let mut out = String::new();
+            if let Some(mut s) = child.stdout.take() {
+                let _ = s.read_to_string(&mut out);
+            }
+            Err(format!(
+                "sing-box run exited at startup (status {:?})\n--- stdout ---\n{out}\n--- stderr ---\n{err}\n--- config ---\n{json}",
+                status.code(),
+            ))
+        }
+    };
+    let _ = std::fs::remove_file(&path);
+    if let Err(msg) = verdict {
+        panic!("[run_smoke] {msg}");
+    }
+    eprintln!("[run_smoke] sing-box run: started and stayed up, OK");
+}
+
+fn free_port() -> u16 {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+    l.local_addr().expect("local_addr").port()
+}

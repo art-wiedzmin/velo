@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 
-use super::types::{TAG_DIRECT, TAG_PROXY};
+use super::types::TAG_PROXY;
 use crate::profile::Profile;
 
 pub(super) fn build_dns(profile: &Profile) -> Value {
@@ -12,9 +12,13 @@ pub(super) fn build_dns(profile: &Profile) -> Value {
     // identified by hostname. TCP/853 survives that filtering. We also avoid
     // `type: "local"` (system resolver) because its syscalls get re-captured
     // by TUN auto_route on Windows, deadlocking lookups in Tunnel mode.
+    // The direct server carries NO `detour`: dialing directly is the
+    // default, and sing-box 1.13 refuses to start when a DNS server detours
+    // to a bare direct outbound ("detour to an empty direct outbound makes
+    // no sense") — a runtime-only check that `sing-box check` does not run.
     let servers = json!([
         { "type": "tls", "tag": "remote", "server": "1.1.1.1", "detour": TAG_PROXY },
-        { "type": "tls", "tag": "direct", "server": "1.1.1.1", "detour": TAG_DIRECT }
+        { "type": "tls", "tag": "direct", "server": "1.1.1.1" }
     ]);
 
     let mut rules: Vec<Value> = Vec::new();
@@ -77,11 +81,12 @@ mod tests {
     }
 
     #[test]
-    fn direct_server_is_dot_via_direct_outbound() {
+    fn direct_server_is_dot_without_detour() {
         // `type: "local"` deadlocks in TUN mode because the system resolver's
         // syscalls get re-captured by auto_route. Plain UDP/53 is also
-        // unreliable — commonly filtered by ISPs. DoT over TCP/853 through
-        // the direct outbound survives both.
+        // unreliable — commonly filtered by ISPs. DoT over TCP/853 dialed
+        // directly survives both. No `detour`: sing-box 1.13 fatals at START
+        // (not check) on a DNS server detouring to a bare direct outbound.
         let p = parser::parse_any("trojan://pw@example.invalid:443?type=tcp").unwrap();
         let cfg = build(&p, &Options::default());
         let servers = cfg["dns"]["servers"].as_array().unwrap();
@@ -91,7 +96,7 @@ mod tests {
             .expect("direct server tagged");
         assert_eq!(direct["type"], "tls");
         assert_eq!(direct["server"], "1.1.1.1");
-        assert_eq!(direct["detour"], "direct");
+        assert!(direct.get("detour").is_none(), "detour must be absent");
     }
 
     #[test]
